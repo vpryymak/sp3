@@ -1,0 +1,71 @@
+---
+- name: Install Jenkins on Ubuntu 22.04
+  hosts: jenkins_master
+  become: yes
+  tasks:
+    - name: Update apt and install dependencies
+      apt:
+        update_cache: yes
+        name:
+          - openjdk-11-jdk
+          - apt-transport-https
+          - ca-certificates
+          - curl
+        state: present
+
+    - name: Add Jenkins key to trusted.gpg.d
+      get_url:
+        url: https://pkg.jenkins.io/debian/jenkins.io-2023.key
+        dest: "/etc/apt/trusted.gpg.d/jenkins.asc"
+        backup: no
+        force: no
+
+    - name: Add Jenkins repository to sources.list.d
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/jenkins.list
+        content: "deb http://pkg.jenkins.io/debian-stable binary/"
+
+    - name: Update apt and install Jenkins
+      apt:
+        update_cache: yes
+        name: jenkins
+        state: present
+
+    - name: Start and enable Jenkins service
+      systemd:
+        name: jenkins
+        state: started
+        enabled: yes
+
+    - name: Open port 8080 in firewall for Jenkins
+      ufw:
+        rule: allow
+        port: 8080
+        proto: tcp
+
+    - name: Install Nginx
+      apt:
+        name: nginx
+        state: present
+
+    - name: Configure Nginx as reverse proxy for Jenkins
+      template:
+        src: nginx_jenkins.conf.j2
+        dest: /etc/nginx/sites-available/jenkins
+        mode: '0644'
+
+    - name: Enable Nginx Jenkins site
+      file:
+        src: /etc/nginx/sites-available/jenkins
+        dest: /etc/nginx/sites-enabled/jenkins
+        state: link
+
+    - name: Remove default Nginx configuration
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+    - name: Reload Nginx to apply changes
+      systemd:
+        name: nginx
+        state: restarted
